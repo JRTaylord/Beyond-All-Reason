@@ -7,7 +7,7 @@ function gadget:GetInfo()
 		author = "JRTaylord: https://github.com/JRTaylord",
 		date = "May 7, 2025",
 		license = "GNU GPL, v2 or later",
-		layer = 0, -- Todo: ask which layer should this be on
+		layer = 0,
 		enabled = true,
 	}
 end
@@ -17,19 +17,17 @@ if not gadgetHandler:IsSyncedCode() then
 	return false
 end
 
-local spGiveOrderToUnit = Spring.GiveOrderToUnit
 local spGetUnitWeaponTarget = Spring.GetUnitWeaponTarget
 local spGetAllUnits = Spring.GetAllUnits
 local spGetUnitDefID = Spring.GetUnitDefID
 local spGetUnitCommandCount = Spring.GetUnitCommandCount
-
--- Constants
--- Todo figure out options to make the command silent
-local CMD_OPTIONS = CMD.OPT_INTERNAL
+local spGetGameFrame = Spring.GetGameFrame
+local spSetUnitVelocity = Spring.SetUnitVelocity
 
 -- Gadget variables
 local gunshipWeaponCounts = {}
 local gunshipsToTrack = {}
+local gunshipsToStop = {}
 
 -- Helper functions
 local function isTargettingUnit(unitID, unitDefID)
@@ -47,7 +45,8 @@ local function stopGunshipIfNoCmdAndTarget(unitID, unitDefID)
 	local numCommands = spGetUnitCommandCount(unitID)
 	local hasTarget = isTargettingUnit(unitID, unitDefID)
 	if numCommands == 0 and not hasTarget then
-		spGiveOrderToUnit(unitID, CMD.STOP, {}, CMD_OPTIONS)
+		local frame = spGetGameFrame()
+		gunshipsToStop[unitID] = frame
 	end
 end
 
@@ -65,8 +64,8 @@ function gadget:Initialize()
 		local unitID = allUnits[i]
 		local unitDefID = spGetUnitDefID(unitID)
 		if gunshipWeaponCounts[unitDefID] then
-			stopGunshipIfNoCmdAndTarget(unitID, unitDefID)
 			gunshipsToTrack[unitID] = true
+			stopGunshipIfNoCmdAndTarget(unitID, unitDefID)
 		end
 	end
 end
@@ -87,5 +86,23 @@ end
 function gadget:UnitCmdDone(unitID, unitDefID, unitTeam, cmdID, cmdParams, cmdOpts, cmdTag)
 	if gunshipsToTrack[unitID] and cmdID == CMD.ATTACK then
 		stopGunshipIfNoCmdAndTarget(unitID, unitDefID)
+	end
+end
+
+function gadget:GameFrame(frame)
+	-- if frame % 2 ~= 0 then
+	-- 	return
+	-- end
+	for unitID, currGunshipStopFrame in pairs(gunshipsToStop) do
+		if spGetUnitCommandCount(unitID) > 0 then
+			Spring.Echo(unitID, "stop interrupt")
+			gunshipsToStop[unitID] = nil
+			break
+		end
+		Spring.SetUnitTarget(unitID, nil, false, false, -1)
+		spSetUnitVelocity(unitID, 0, -2, 0)
+		if frame - currGunshipStopFrame > 40 then
+			gunshipsToStop[unitID] = nil
+		end
 	end
 end
